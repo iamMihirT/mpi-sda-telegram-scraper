@@ -8,14 +8,18 @@ from app.setup import setup
 from app.setup_scraping_client import get_scraping_client
 
 
-
 def main(
     job_id: int,
     channel_name: str,
     tracer_id: str,
     work_dir: str,
+    kp_auth_token: str,
+    kp_host: str,
+    telegram_api_id: str,
+    telegram_api_hash: str,
+    telegram_phone_number: str,
+    openai_api_key: str,
     log_level: str = "WARNING",
-  
 ) -> None:
 
     logger = logging.getLogger(__name__)
@@ -25,10 +29,11 @@ def main(
         logger.error(f"{job_id}: job_id, tracer_id, and channel_name must all be set.")
         raise ValueError("job_id, tracer_id, and channel_name must all be set.")
 
-
     kernel_planckster, protocol, file_repository = setup(
         job_id=job_id,
         logger=logger,
+        kp_auth_token=kp_auth_token,
+        kp_host=kp_host,
     )
 
     scraped_data_repository = ScrapedDataRepository(
@@ -40,8 +45,10 @@ def main(
     telegram_client = get_scraping_client(
         job_id=job_id,
         logger=logger,
+        telegram_api_id=telegram_api_id,
+        telegram_api_hash=telegram_api_hash,
+        telegram_phone_number=telegram_phone_number,
     )
-
 
     import asyncio
 
@@ -55,7 +62,8 @@ def main(
             scraped_data_repository=scraped_data_repository,
             telegram_client=telegram_client,
             log_level=log_level,
-            work_dir=work_dir
+            work_dir=work_dir,
+            openai_api_key=openai_api_key,
         )
     )
 
@@ -96,15 +104,9 @@ if __name__ == "__main__":
         help="The log level to use when running the scraper. Possible values are DEBUG, INFO, WARNING, ERROR, CRITICAL. Set to WARNING by default.",
     )
 
-    parser.add_argument(
-        "--work_dir",
-        type=str,
-        default="./.tmp",
-        help="work dir"
-    )
+    parser.add_argument("--work_dir", type=str, default="./.tmp", help="work dir")
 
     args = parser.parse_args()
-
 
     main(
         job_id=args.job_id,
@@ -112,7 +114,4 @@ if __name__ == "__main__":
         tracer_id=args.tracer_id,
         work_dir=args.work_dir,
         log_level=args.log_level,
-     
     )
-
-

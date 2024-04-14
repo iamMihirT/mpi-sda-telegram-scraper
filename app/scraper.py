@@ -14,15 +14,63 @@ from openai import OpenAI
 from geopy.geocoders import Nominatim
 import pandas as pd
 import shutil
+
+
 class messageData(BaseModel):
     city: str
     country: str
     year: int
-    month: Literal['January', 'Febuary', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-    day: Literal['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31']
-    disaster_type: Literal['Wildfire', 'Other']
+    month: Literal[
+        "January",
+        "Febuary",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ]
+    day: Literal[
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+    ]
+    disaster_type: Literal["Wildfire", "Other"]
 
-#Potential alternate prompting
+
+# Potential alternate prompting
 # class messageDataAlternate(BaseModel):
 #     city: str
 #     country: str
@@ -31,14 +79,16 @@ class messageData(BaseModel):
 #     day: Literal['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', 'Unsure']
 #     disaster_type: Literal['Wildfire', 'Other']
 
+
 class filterData(BaseModel):
     relevant: bool
+
 
 class TwitterScrapeRequestModel(BaseModel):
     query: str
     outfile: str
     api_key: str
-    
+
 
 async def scrape(
     job_id: int,
@@ -46,10 +96,10 @@ async def scrape(
     tracer_id: str,
     scraped_data_repository: ScrapedDataRepository,
     telegram_client: TelegramClient,
+    openai_api_key: str,
     log_level: Logger,
-    work_dir: str
+    work_dir: str,
 ) -> JobOutput:
-
 
     try:
         logger = logging.getLogger(__name__)
@@ -68,13 +118,13 @@ async def scrape(
             # Set the job state to running
             logger.info(f"{job_id}: Starting Job")
             job_state = BaseJobState.RUNNING
-            #job.touch()
+            # job.touch()
 
             data = []
             augmented_data = []
             filter = "forest wildfire"
             # Enables `response_model`
-            instructor_client = instructor.from_openai(OpenAI())
+            instructor_client = instructor.from_openai(OpenAI(api_key=openai_api_key))
 
             try:
                 async for message in client.iter_messages(
@@ -97,12 +147,17 @@ async def scrape(
                         ]
                     )
                     if message.text:
-                        augmented_data.append(augment_telegram(instructor_client, message, filter))
+                        augmented_data.append(
+                            augment_telegram(instructor_client, message, filter)
+                        )
 
                     # Check if the message has media (photo or video)
                     if message.media:
 
-                        if hasattr(message.media, "photo") and message.media.photo is not None:
+                        if (
+                            hasattr(message.media, "photo")
+                            and message.media.photo is not None
+                        ):
 
                             # Download photo
                             with tempfile.NamedTemporaryFile() as tmp:
@@ -110,8 +165,7 @@ async def scrape(
                                     f"{job_id}: Downloading photo to {tmp.name}"
                                 )
                                 file_location = await client.download_media(
-                                    message.media.photo,
-                                    file=tmp.name
+                                    message.media.photo, file=tmp.name
                                 )
 
                                 logger.info(
@@ -130,7 +184,6 @@ async def scrape(
                                 )
 
                                 current_data = media_data
-                                
 
                                 scraped_data_repository.register_scraped_photo(
                                     job_id=job_id,
@@ -139,11 +192,14 @@ async def scrape(
                                 )
 
                                 output_data_list.append(media_data)
-                                #job.touch()
-                            
+                                # job.touch()
+
                                 last_successful_data = media_data
 
-                        elif hasattr(message.media, "document") and message.media.document is not None:
+                        elif (
+                            hasattr(message.media, "document")
+                            and message.media.document is not None
+                        ):
 
                             # Download video (or other documents)
                             with tempfile.NamedTemporaryFile() as tmp:
@@ -175,12 +231,29 @@ async def scrape(
                                 )
 
                                 output_data_list.append(document_data)
-                                #job.touch()
+                                # job.touch()
                                 last_successful_data = document_data
 
-                df = pd.DataFrame(augmented_data, columns=["Title", "Telegram", "Extracted_Location", "Resolved_Latitude", "Resolved_Longitude", "Month", "Day", "Year", "Disaster_Type"])
+                df = pd.DataFrame(
+                    augmented_data,
+                    columns=[
+                        "Title",
+                        "Telegram",
+                        "Extracted_Location",
+                        "Resolved_Latitude",
+                        "Resolved_Longitude",
+                        "Month",
+                        "Day",
+                        "Year",
+                        "Disaster_Type",
+                    ],
+                )
                 os.makedirs(f"{work_dir}/telegram", exist_ok=True)
-                df.to_json(f"{work_dir}/telegram/augmented_telegram_scrape.json", orient='index', indent=4)
+                df.to_json(
+                    f"{work_dir}/telegram/augmented_telegram_scrape.json",
+                    orient="index",
+                    indent=4,
+                )
 
                 final_augmented_data = KernelPlancksterSourceData(
                     name=f"telegram_all_augmented",
@@ -188,23 +261,26 @@ async def scrape(
                     relative_path=f"telegram/{tracer_id}/{job_id}/augmented/data.json",
                 )
                 try:
-                    scraped_data_repository.register_scraped_json(final_augmented_data, job_id, f"{work_dir}/telegram/augmented_telegram_scrape.json" )
+                    scraped_data_repository.register_scraped_json(
+                        final_augmented_data,
+                        job_id,
+                        f"{work_dir}/telegram/augmented_telegram_scrape.json",
+                    )
                 except Exception as e:
                     logger.info("could not register file")
 
             except Exception as error:
                 job_state = BaseJobState.FAILED
                 logger.error(
-                    f"{job_id}: Unable to scrape data. Error:\n{error}\nJob with tracer_id {tracer_id} failed.\nLast successful data: {last_successful_data}\nCurrent data: \"{current_data}\", job_state: \"{job_state}\""
+                    f'{job_id}: Unable to scrape data. Error:\n{error}\nJob with tracer_id {tracer_id} failed.\nLast successful data: {last_successful_data}\nCurrent data: "{current_data}", job_state: "{job_state}"'
                 )
-                #job.messages.append(f"Status: FAILED. Unable to scrape data. {error}")  # type: ignore
-                #job.touch()
+                # job.messages.append(f"Status: FAILED. Unable to scrape data. {error}")  # type: ignore
+                # job.touch()
 
                 # continue to scrape data if possible
 
-
             job_state = BaseJobState.FINISHED
-            #job.touch()
+            # job.touch()
             logger.info(f"{job_id}: Job finished")
             shutil.rmtree(work_dir)
             return JobOutput(
@@ -212,91 +288,98 @@ async def scrape(
                 tracer_id=tracer_id,
                 source_data_list=output_data_list,
             )
-     
 
     except Exception as error:
-        logger.error(f"{job_id}: Unable to scrape data. Job with tracer_id {tracer_id} failed. Error:\n{error}")
+        logger.error(
+            f"{job_id}: Unable to scrape data. Job with tracer_id {tracer_id} failed. Error:\n{error}"
+        )
         job_state = BaseJobState.FAILED
-        
+
         shutil.rmtree(work_dir)
-        #job.messages.append(f"Status: FAILED. Unable to scrape data. {e}")
+        # job.messages.append(f"Status: FAILED. Unable to scrape data. {e}")
 
 
-def augment_telegram(client:Instructor , message: any, filter: str):
+def augment_telegram(client: Instructor, message: any, filter: str):
     if len(message.text) > 5:
         # extract aspects of the tweet
-            title = message.peer_id.channel_id
-            content = message.text
- 
-            
-            
-            #relvancy filter with gpt-4 
-            filter_data = client.chat.completions.create(
-                model="gpt-4",
-                response_model=filterData,
-                messages=[
-                    {
-                    "role": "user", 
-                    "content": f"Examine this telegram message: {content}. Is this telegram message describing {filter}? "
-                    },
-                ]
-            )
-            
-            if filter_data.relevant == True:
-                aug_data = None
-                try:
-                    #location extraction with gpt-3.5
-                    aug_data = client.chat.completions.create(
-                    model="gpt-4-turbo", 
+        title = message.peer_id.channel_id
+        content = message.text
+
+        # relvancy filter with gpt-4
+        filter_data = client.chat.completions.create(
+            model="gpt-4",
+            response_model=filterData,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Examine this telegram message: {content}. Is this telegram message describing {filter}? ",
+                },
+            ],
+        )
+
+        if filter_data.relevant == True:
+            aug_data = None
+            try:
+                # location extraction with gpt-3.5
+                aug_data = client.chat.completions.create(
+                    model="gpt-4-turbo",
                     response_model=messageData,
                     messages=[
-                        {
-                        "role": "user", 
-                        "content": f"Extract: {content}"
-                        },
-                    ]
-                    )
-                except Exception as e:
-                    Logger.info("Could not augment tweet, trying with alternate prompt")
-                    #Potential alternate prompting
-                    
-                    # try:
-                    #     #location extraction with gpt-3.5
-                    #     aug_data = client.chat.completions.create(
-                    #     model="gpt-4-turbo", 
-                    #     response_model=messageDataAlternate,
-                    #     messages=[
-                    #         {
-                    #         "role": "user", 
-                    #         "content": f"Extract: {formatted_tweet_str}"
-                    #         },
-                    #     ]
-                    #     )
-                    # except Exception as e2:
-                    return None
-                city = aug_data.city
-                country = aug_data.country
-                extracted_location = city + "," + country 
-                year = aug_data.year
-                month = aug_data.month
-                day = aug_data.day
-                disaster_type = aug_data.disaster_type   
-                
-                # NLP-informed geolocation            
-                try:
-                    coordinates = get_lat_long(extracted_location)
-                except Exception as e:
-                    coordinates = None
-                if coordinates:
-                    lattitude = coordinates[0]
-                    longitude = coordinates[1]
-                else:
-                    lattitude = "no latitude"
-                    longitude = "no longitude"
+                        {"role": "user", "content": f"Extract: {content}"},
+                    ],
+                )
+            except Exception as e:
+                Logger.info("Could not augment tweet, trying with alternate prompt")
+                # Potential alternate prompting
 
-                #TODO: format date
-                
-                return [title, content, extracted_location, lattitude, longitude, month, day, year, disaster_type]
+                # try:
+                #     #location extraction with gpt-3.5
+                #     aug_data = client.chat.completions.create(
+                #     model="gpt-4-turbo",
+                #     response_model=messageDataAlternate,
+                #     messages=[
+                #         {
+                #         "role": "user",
+                #         "content": f"Extract: {formatted_tweet_str}"
+                #         },
+                #     ]
+                #     )
+                # except Exception as e2:
+                return None
+            city = aug_data.city
+            country = aug_data.country
+            extracted_location = city + "," + country
+            year = aug_data.year
+            month = aug_data.month
+            day = aug_data.day
+            disaster_type = aug_data.disaster_type
+
+            # NLP-informed geolocation
+            try:
+                coordinates = get_lat_long(extracted_location)
+            except Exception as e:
+                coordinates = None
+            if coordinates:
+                lattitude = coordinates[0]
+                longitude = coordinates[1]
+            else:
+                lattitude = "no latitude"
+                longitude = "no longitude"
+
+            # TODO: format date
+
+            return [
+                title,
+                content,
+                extracted_location,
+                lattitude,
+                longitude,
+                month,
+                day,
+                year,
+                disaster_type,
+            ]
+
 
 # utility function for augmenting tweets with geolocation
 def get_lat_long(location_name):
@@ -312,4 +395,3 @@ def get_lat_long(location_name):
     except Exception as e:
         print(f"Error: {e}")
         return None
-    
