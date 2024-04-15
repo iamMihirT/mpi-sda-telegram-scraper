@@ -13,7 +13,6 @@ from instructor import Instructor
 from openai import OpenAI
 from geopy.geocoders import Nominatim
 import pandas as pd
-import shutil
 
 
 class messageData(BaseModel):
@@ -98,7 +97,6 @@ async def scrape(
     telegram_client: TelegramClient,
     openai_api_key: str,
     log_level: Logger,
-    work_dir: str,
 ) -> JobOutput:
 
     try:
@@ -234,40 +232,41 @@ async def scrape(
                                 # job.touch()
                                 last_successful_data = document_data
 
-                df = pd.DataFrame(
-                    augmented_data,
-                    columns=[
-                        "Title",
-                        "Telegram",
-                        "Extracted_Location",
-                        "Resolved_Latitude",
-                        "Resolved_Longitude",
-                        "Month",
-                        "Day",
-                        "Year",
-                        "Disaster_Type",
-                    ],
-                )
-                os.makedirs(f"{work_dir}/telegram", exist_ok=True)
-                df.to_json(
-                    f"{work_dir}/telegram/augmented_telegram_scrape.json",
-                    orient="index",
-                    indent=4,
-                )
-
-                final_augmented_data = KernelPlancksterSourceData(
-                    name=f"telegram_all_augmented",
-                    protocol=protocol,
-                    relative_path=f"telegram/{tracer_id}/{job_id}/augmented/data.json",
-                )
-                try:
-                    scraped_data_repository.register_scraped_json(
-                        final_augmented_data,
-                        job_id,
-                        f"{work_dir}/telegram/augmented_telegram_scrape.json",
+                with tempfile.NamedTemporaryFile() as tmp:
+                    df = pd.DataFrame(
+                        augmented_data,
+                        columns=[
+                            "Title",
+                            "Telegram",
+                            "Extracted_Location",
+                            "Resolved_Latitude",
+                            "Resolved_Longitude",
+                            "Month",
+                            "Day",
+                            "Year",
+                            "Disaster_Type",
+                        ],
                     )
-                except Exception as e:
-                    logger.info("could not register file")
+                    file_name = f"{os.path.basename(tmp.name)}"
+                    df.to_json(
+                        f"{tmp.name}",
+                        orient="index",
+                        indent=4,
+                    )
+
+                    final_augmented_data = KernelPlancksterSourceData(
+                        name=f"telegram_all_augmented",
+                        protocol=protocol,
+                        relative_path=f"telegram/{tracer_id}/{job_id}/augmented/data.json",
+                    )
+                    try:
+                        scraped_data_repository.register_scraped_json(
+                            final_augmented_data,
+                            job_id,
+                            f"{tmp.name}",
+                        )
+                    except Exception as e:
+                        logger.info("could not register file")
 
             except Exception as error:
                 job_state = BaseJobState.FAILED
@@ -282,10 +281,6 @@ async def scrape(
             job_state = BaseJobState.FINISHED
             # job.touch()
             logger.info(f"{job_id}: Job finished")
-            try:
-                shutil.rmtree(work_dir)
-            except Exception as e:
-                logger.log("Could not delete tmp directory, exiting")
             return JobOutput(
                 job_state=job_state,
                 tracer_id=tracer_id,
@@ -298,10 +293,6 @@ async def scrape(
         )
         job_state = BaseJobState.FAILED
 
-        try:
-            shutil.rmtree(work_dir)
-        except Exception as e:
-            logger.log("Could not delete tmp directory, exiting")
         # job.messages.append(f"Status: FAILED. Unable to scrape data. {e}")
 
 
