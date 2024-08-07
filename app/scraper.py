@@ -297,85 +297,86 @@ async def scrape(
 
 
 def augment_telegram(client: Instructor, message: any, filter: str):
-    if len(message.text) > 5:
-        # extract aspects of the tweet
-        title = message.peer_id.channel_id
-        content = message.text
+    if message:
+        if len(message.text) > 5:
+            # extract aspects of the tweet
+            title = message.peer_id.channel_id
+            content = message.text
 
-        # relvancy filter with gpt-4
-        filter_data = client.chat.completions.create(
-            model="gpt-4",
-            response_model=filterData,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Examine this telegram message: {content}. Is this telegram message describing {filter}? ",
-                },
-            ],
-        )
+            # relvancy filter with gpt-4
+            filter_data = client.chat.completions.create(
+                model="gpt-4",
+                response_model=filterData,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Examine this telegram message: {content}. Is this telegram message describing {filter}? ",
+                    },
+                ],
+            )
 
-        if filter_data.relevant == True:
-            aug_data = None
-            try:
-                # location extraction with gpt-3.5
-                aug_data = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    response_model=messageData,
-                    messages=[
-                        {"role": "user", "content": f"Extract: {content}"},
-                    ],
-                )
-            except Exception as e:
-                Logger.info("Could not augment tweet, trying with alternate prompt")
-                # Potential alternate prompting
+            if filter_data.relevant == True:
+                aug_data = None
+                try:
+                    # location extraction with gpt-3.5
+                    aug_data = client.chat.completions.create(
+                        model="gpt-4-turbo",
+                        response_model=messageData,
+                        messages=[
+                            {"role": "user", "content": f"Extract: {content}"},
+                        ],
+                    )
+                except Exception as e:
+                    Logger.info("Could not augment tweet, trying with alternate prompt")
+                    # Potential alternate prompting
 
-                # try:
-                #     #location extraction with gpt-3.5
-                #     aug_data = client.chat.completions.create(
-                #     model="gpt-4-turbo",
-                #     response_model=messageDataAlternate,
-                #     messages=[
-                #         {
-                #         "role": "user",
-                #         "content": f"Extract: {formatted_tweet_str}"
-                #         },
-                #     ]
-                #     )
-                # except Exception as e2:
-                return None
-            city = aug_data.city
-            country = aug_data.country
-            extracted_location = city + "," + country
-            year = aug_data.year
-            month = aug_data.month
-            day = aug_data.day
-            disaster_type = aug_data.disaster_type
+                    # try:
+                    #     #location extraction with gpt-3.5
+                    #     aug_data = client.chat.completions.create(
+                    #     model="gpt-4-turbo",
+                    #     response_model=messageDataAlternate,
+                    #     messages=[
+                    #         {
+                    #         "role": "user",
+                    #         "content": f"Extract: {formatted_tweet_str}"
+                    #         },
+                    #     ]
+                    #     )
+                    # except Exception as e2:
+                    return None
+                city = aug_data.city
+                country = aug_data.country
+                extracted_location = city + "," + country
+                year = aug_data.year
+                month = aug_data.month
+                day = aug_data.day
+                disaster_type = aug_data.disaster_type
 
-            # NLP-informed geolocation
-            try:
-                coordinates = get_lat_long(extracted_location)
-            except Exception as e:
-                coordinates = None
-            if coordinates:
-                lattitude = coordinates[0]
-                longitude = coordinates[1]
-            else:
-                lattitude = "no latitude"
-                longitude = "no longitude"
+                # NLP-informed geolocation
+                try:
+                    coordinates = get_lat_long(extracted_location)
+                except Exception as e:
+                    coordinates = None
+                if coordinates:
+                    lattitude = coordinates[0]
+                    longitude = coordinates[1]
+                else:
+                    lattitude = "no latitude"
+                    longitude = "no longitude"
 
-            # TODO: format date
+                # TODO: format date
 
-            return [
-                title,
-                content,
-                extracted_location,
-                lattitude,
-                longitude,
-                month,
-                day,
-                year,
-                disaster_type,
-            ]
+                return [
+                    title,
+                    content,
+                    extracted_location,
+                    lattitude,
+                    longitude,
+                    month,
+                    day,
+                    year,
+                    disaster_type,
+                ]
 
 
 # utility function for augmenting tweets with geolocation
