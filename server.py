@@ -1,43 +1,35 @@
-import subprocess
-import time
 import os
-import nest_asyncio
 from dotenv import load_dotenv
-from datetime import datetime
-from telegram_scraper import scrape
 from fastapi import FastAPI
-from pydantic import BaseModel
+from app.sdk.job_manager import BaseJobManager
+from app.sdk.job_router import JobManagerFastAPIRouter
 
+from telegram_scraper import scrape
+import logging
 
 load_dotenv()
-nest_asyncio.apply()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
 
 
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
-PHONE = os.getenv("PHONE")
-USERNAME = os.getenv("USERNAME")
 HOST = os.getenv("HOST", "localhost")
-PORT = os.getenv("PORT", "8000")
+PORT = int(os.getenv("PORT", "8000"))
+MODE = os.getenv("MODE", "production")
 
 app = FastAPI()
+app.job_manager = BaseJobManager()  # type: ignore
 
-class TelegramScrapeRequest(BaseModel):
-    channel: str = "GCC_report"
-    
-@app.put("/telegram/scrape")
-async def scrape_telegram(request: TelegramScrapeRequest):
-    datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    outfile = f"data_telegram_{request.channel}_{datetime}.csv"
+job_manager_router = JobManagerFastAPIRouter(app, scrape)
 
-    print(f"{datetime} - Starting scraping {outfile}")
-    start_time = time.time()
-    # This should be a background task
-    await scrape(request.channel, outfile)
-    print(f"{datetime} - Scraping completed in {time.time() - start_time} seconds")
-    
-    return {"data": "Scraping completed"}
 
-def server() -> None:
-    cmd = ["uvicorn", "main:app", "--reload", "--host", f"{HOST}", "--port", f"{PORT}"]
-    subprocess.call(cmd)
+if __name__ == "__main__":
+    import uvicorn
+
+    print(f"Starting server on {HOST}:{PORT}")
+    uvicorn.run("server:app", host=HOST, port=PORT, reload=True)
